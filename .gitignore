@@ -1,0 +1,4 @@
+*.suo
+SimpleVerify/bin/
+SimpleVerify/obj/
+*.nupkg

@@ -1,0 +1,31 @@
+﻿<?xml version="1.0"?>
+<package>
+  <metadata>
+    <id>SimpleVerify</id>
+    <version>1.0.0.0</version>
+    <title>SimpleVerify Tool</title>
+    <authors>Richard Ranft, Roostertail Games</authors>
+    <owners></owners>
+    <description>A tool for using SHA-1 hashes to verify file and folder integrity</description>
+    <releaseNotes>1.0.0.0 Released 4 Dec 2017.</releaseNotes>
+    <summary>A tool for using SHA-1 hashes to verify file and folder integrity.</summary>
+    <language>en-US</language>
+    <iconUrl>http://roostertailgames.com/favicon.ico</iconUrl>
+    <copyright>Copyright © Richard Ranft and Roostertail Games 2017</copyright>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <dependencies>
+      <dependency id="log4net" version="[2.0.3]" />
+    </dependencies>
+    <frameworkAssemblies>
+      <frameworkAssembly assemblyName="System" targetFramework="net40-Client" />
+      <frameworkAssembly assemblyName="System.Core" targetFramework="net40-Client" />
+    </frameworkAssemblies>
+    <tags>Roostertail Games File Integrity Validation</tags>
+    <references>
+      <reference file="SimpleVerify.dll" />
+    </references>
+  </metadata>
+  <files>
+    <file src="bin\SimpleVerify.dll" target="lib/net40-Client/" />
+  </files>
+</package>

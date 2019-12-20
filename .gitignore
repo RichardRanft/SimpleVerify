@@ -2,3 +2,5 @@
 SimpleVerify/bin/
 SimpleVerify/obj/
 *.nupkg
+/.vs/SimpleVerify/v16/Server/sqlite3
+/VerifyDriver/obj/Debug

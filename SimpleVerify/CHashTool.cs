@@ -80,6 +80,7 @@ namespace SimpleVerify
                 entry.Hash = getFileHash(file).ToUpper();
                 entry.Path = getRelativePath(path, file);
                 entry.Filename = Path.GetFileName(path);
+                entry.Digest = m_hash;
                 if (RelativePath)
                     entry.PathHash = getHashAsString(entry.Path).ToString();
                 else
@@ -272,6 +273,7 @@ namespace SimpleVerify
                 return "";
             }
             var hash = sha1.Hash;
+            m_hash = hash;
 
             var sb = new StringBuilder(hash.Length * 2);
 
@@ -427,6 +429,7 @@ namespace SimpleVerify
         public String Path = "";
         public String Hash = "";
         public String PathHash = "";
+        public byte[] Digest;
     }
 
     public class CFileSortFilename : IComparer<CFileEntry>

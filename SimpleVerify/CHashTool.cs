@@ -17,15 +17,25 @@ namespace SimpleVerify
         public static bool Dump = false;
         public static bool Expand = false;
         public static bool SortByFilename = false;
-        public static bool LowercaseDigest = false;
+        public static bool LowercaseDigest = true;
         public static bool SortDigest = false;
         public static bool UseFileHashKeys = false;
-        public static bool RelativePath = false;
+        public static bool RelativePath = true;
         public static bool SortOrdinal = true;
+        public static bool Encode64Bit = false;
         public static EDigestFormat Format = EDigestFormat.FilesFirst;
 
         private static bool m_error = false;
         private static byte[] m_hash;
+
+        public static byte[] Digest
+        {
+            get
+            {
+                return m_hash;
+            }
+            private set { }
+        }
 
         public static String Hash
         {
@@ -35,6 +45,80 @@ namespace SimpleVerify
             }
             private set { }
         }
+
+        private static String getHashAsString()
+        {
+            if (Encode64Bit)
+                return System.Convert.ToBase64String(m_hash);
+
+            var sb = new StringBuilder(m_hash.Length * 2);
+
+            int count = 0;
+            foreach (byte b in m_hash)
+            {
+                // can be "x2" if you want lowercase
+                sb.Append(b.ToString("x2"));
+                if (Expand && ++count % 4 == 0)
+                    sb.Append(" ");
+            }
+            return sb.ToString();
+        }
+
+        public static String GetDataHash(byte[] data)
+        {
+            SHA1 m_sha1 = new SHA1CryptoServiceProvider();
+            m_hash = m_sha1.ComputeHash(data);
+            if (Encode64Bit)
+                return System.Convert.ToBase64String(m_hash);
+
+            var sb = new StringBuilder(m_hash.Length * 2);
+
+            foreach (byte b in m_hash)
+            {
+                // can be "x2" if you want lowercase
+                sb.Append(b.ToString("x2"));
+            }
+            return sb.ToString();
+        }
+
+        public static void GetDigestHash(byte[] data)
+        {
+            SHA1 m_sha1 = new SHA1CryptoServiceProvider();
+            m_hash = m_sha1.ComputeHash(data);
+        }
+
+        public static byte[] GetHashDigest(String filename)
+        {
+            if (String.IsNullOrEmpty(filename))
+            {
+                Console.WriteLine("Must provide a file or folder path");
+                return null;
+            }
+            if (File.Exists(filename))
+            {
+                SHA1 m_sha1 = new SHA1CryptoServiceProvider();
+                try
+                {
+                    using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    {
+                        m_hash = m_sha1.ComputeHash(fs);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("An exception has occurred.");
+                    Console.WriteLine(ex.Message);
+                    if (ex.InnerException != null)
+                        Console.WriteLine(ex.InnerException.Message);
+                    m_error = true;
+                    LastException = ex;
+                    return null;
+                }
+                return m_sha1.Hash;
+            }
+            return null;
+        }
+
 
         public static bool GetHash(String path)
         {
@@ -71,23 +155,31 @@ namespace SimpleVerify
             else
                 files.Sort();
             List<CFileEntry> filekey = new List<CFileEntry>();
-            StringBuilder digest = new StringBuilder();
+            List<byte> digest = new List<byte>();
             foreach (String file in files)
             {
                 if (!File.Exists(file))
                     continue;
+                GetHashDigest(file);
                 CFileEntry entry = new CFileEntry();
-                entry.Hash = getFileHash(file).ToUpper();
+                entry.Encode64Bit = Encode64Bit;
+                entry.Expand = Expand;
                 entry.Path = getRelativePath(path, file);
-                entry.Filename = Path.GetFileName(path);
-                if (RelativePath)
-                    entry.PathHash = getHashAsString(entry.Path).ToString();
-                else
-                    entry.PathHash = getHashAsString(entry.Filename).ToString();
+                entry.Filename = Path.GetFileName(file);
+                entry.Digest = m_hash;
                 if (LowercaseDigest)
                 {
-                    entry.Hash = entry.Hash.ToLower();
-                    entry.PathHash = entry.PathHash.ToLower();
+                    if (RelativePath)
+                        entry.PathDigest = getStringHash(entry.Path.ToLower());
+                    else
+                        entry.PathDigest = getStringHash(file.ToLower());
+                }
+                else
+                {
+                    if (RelativePath)
+                        entry.PathDigest = getStringHash(entry.Path.ToUpper());
+                    else
+                        entry.PathDigest = getStringHash(file.ToUpper());
                 }
                 filekey.Add(entry);
                 if (m_error)
@@ -99,13 +191,13 @@ namespace SimpleVerify
                 {
                     if (SortDigest)
                         filekey.Sort(new CFileSortPathHash());
-                    appendToDigest(filekey, digest);
+                    appendToDigest(filekey, ref digest);
                 }
                 else
                 {
                     if (SortDigest)
                         filekey.Sort(new CFileSortHash());
-                    appendToDigest(filekey, digest);
+                    appendToDigest(filekey, ref digest);
                 }
             }
             else
@@ -117,7 +209,7 @@ namespace SimpleVerify
                             filekey.Sort(new CFileSortFilenameOrdinal());
                         else
                             filekey.Sort(new CFileSortFilename());
-                    appendToDigest(filekey, digest);
+                    appendToDigest(filekey, ref digest);
                 }
                 else
                 {
@@ -126,14 +218,10 @@ namespace SimpleVerify
                             filekey.Sort(new CFileSortPathOrdinal());
                         else
                             filekey.Sort(new CFileSortPath());
-                    appendToDigest(filekey, digest);
+                    appendToDigest(filekey, ref digest);
                 }
             }
-            String hashdigest = digest.ToString();
-            int index = hashdigest.LastIndexOf(Delimiter);
-            if (index > 0)
-                hashdigest = hashdigest.Remove(index);
-            m_hash = getStringHash(hashdigest);
+            GetDigestHash(digest.ToArray());
             if (Dump && filekey.Count > 0)
             {
                 try
@@ -150,13 +238,9 @@ namespace SimpleVerify
                     using (StreamWriter sw = new StreamWriter(dumpfile))
                     {
                         foreach (CFileEntry entry in filekey)
-                            sw.WriteLine(entry.Path + " " + entry.Hash);
+                            sw.WriteLine(entry.Hash + " " + entry.Path);
                         sw.WriteLine();
                         sw.WriteLine("Overall SHA-1 = " + Hash);
-                        sw.WriteLine();
-                        sw.WriteLine("Digest:");
-                        sw.WriteLine("-------");
-                        sw.Write(hashdigest);
                     }
                 }
                 catch { }
@@ -164,7 +248,7 @@ namespace SimpleVerify
             return Hash;
         }
 
-        private static void appendToDigest(List<CFileEntry> filekey, StringBuilder digest)
+        private static void appendToDigest(List<CFileEntry> filekey, ref List<byte> digest)
         {
             switch (Format)
             {
@@ -172,70 +256,120 @@ namespace SimpleVerify
                     foreach (CFileEntry entry in filekey)
                     {
                         if (UseFileHashKeys)
-                            digest.Append(entry.PathHash + Environment.NewLine);
+                        {
+                            foreach (byte b in entry.PathDigest)
+                                digest.Add(b);
+                        }
                         else
-                            digest.Append(entry.Path + Environment.NewLine);
+                        {
+                            char[] pathchars = entry.Path.ToCharArray();
+                            foreach(char c in pathchars)
+                                digest.Add((byte)c);
+                        }
                     }
                     foreach (CFileEntry entry in filekey)
                     {
-                        digest.Append(entry.Hash + Environment.NewLine);
+                        foreach(byte b in entry.Digest)
+                            digest.Add(b);
                     }
                     break;
                 case EDigestFormat.FilesLast:
                     foreach (CFileEntry entry in filekey)
                     {
-                        digest.Append(entry.Hash + Environment.NewLine);
+                        foreach (byte b in entry.Digest)
+                            digest.Add(b);
                     }
                     foreach (CFileEntry entry in filekey)
                     {
                         if (UseFileHashKeys)
-                            digest.Append(entry.PathHash + Environment.NewLine);
+                        {
+                            foreach (byte b in entry.PathDigest)
+                                digest.Add(b);
+                        }
                         else
-                            digest.Append(entry.Path + Environment.NewLine);
+                        {
+                            char[] pathchars = entry.Path.ToCharArray();
+                            foreach (char c in pathchars)
+                                digest.Add((byte)c);
+                        }
                     }
                     break;
                 case EDigestFormat.InlineFilesFirst:
                     foreach (CFileEntry entry in filekey)
                     {
                         if (UseFileHashKeys)
-                            digest.Append(entry.PathHash + Delimiter);
+                        {
+                            foreach (byte b in entry.PathDigest)
+                                digest.Add(b);
+                        }
                         else
-                            digest.Append(entry.Path + Delimiter);
+                        {
+                            char[] pathchars = entry.Path.ToCharArray();
+                            foreach (char c in pathchars)
+                                digest.Add((byte)c);
+                        }
                     }
                     foreach (CFileEntry entry in filekey)
                     {
-                        digest.Append(entry.Hash + Delimiter);
+                        foreach (byte b in entry.Digest)
+                            digest.Add(b);
                     }
                     break;
                 case EDigestFormat.InlineFilesLast:
                     foreach (CFileEntry entry in filekey)
                     {
-                        digest.Append(entry.Hash + Delimiter);
+                        foreach (byte b in entry.Digest)
+                            digest.Add(b);
                     }
                     foreach (CFileEntry entry in filekey)
                     {
                         if (UseFileHashKeys)
-                            digest.Append(entry.PathHash + Delimiter);
+                        {
+                            foreach (byte b in entry.PathDigest)
+                                digest.Add(b);
+                        }
                         else
-                            digest.Append(entry.Path + Delimiter);
+                        {
+                            char[] pathchars = entry.Path.ToCharArray();
+                            foreach (char c in pathchars)
+                                digest.Add((byte)c);
+                        }
                     }
                     break;
                 case EDigestFormat.InlinePairFirst:
                     foreach (CFileEntry entry in filekey)
                     {
                         if (UseFileHashKeys)
-                            digest.Append(entry.PathHash + Delimiter + entry.Hash + Delimiter);
+                        {
+                            foreach (byte b in entry.PathDigest)
+                                digest.Add(b);
+                        }
                         else
-                            digest.Append(entry.Path + Delimiter + entry.Hash + Delimiter);
+                        {
+                            char[] pathchars = entry.Path.ToCharArray();
+                            foreach (char c in pathchars)
+                                digest.Add((byte)c);
+                        }
+                        foreach (byte b in entry.Digest)
+                            digest.Add(b);
                     }
                     break;
                 case EDigestFormat.InlinePairLast:
                     foreach (CFileEntry entry in filekey)
                     {
+                        foreach (byte b in entry.Digest)
+                            digest.Add(b);
                         if (UseFileHashKeys)
-                            digest.Append(entry.Hash + Delimiter + entry.PathHash + Delimiter);
+                        {
+                            foreach (byte b in entry.PathDigest)
+                                digest.Add(b);
+                        }
                         else
-                            digest.Append(entry.Hash + Delimiter + entry.Path + Delimiter);
+                        {
+                            char[] pathchars = entry.Path.ToCharArray();
+                            foreach (char c in pathchars)
+                                digest.Add((byte)c);
+                        }
                     }
                     break;
             }
@@ -253,12 +387,12 @@ namespace SimpleVerify
 
         private static String getFileHash(String filename)
         {
-            SHA1 sha1 = new SHA1CryptoServiceProvider();
+            SHA1 m_sha1 = new SHA1CryptoServiceProvider();
             try
             {
                 using (FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
-                    sha1.ComputeHash(fs);
+                    m_hash = m_sha1.ComputeHash(fs);
                 }
             }
             catch (Exception ex)
@@ -271,51 +405,40 @@ namespace SimpleVerify
                 LastException = ex;
                 return "";
             }
-            var hash = sha1.Hash;
+            var hash = m_sha1.Hash;
+            m_hash = hash;
 
             var sb = new StringBuilder(hash.Length * 2);
 
             foreach (byte b in hash)
             {
                 // can be "x2" if you want lowercase
-                sb.Append(b.ToString("X2"));
+                sb.Append(b.ToString("x2"));
             }
             return sb.ToString();
         }
 
         private static byte[] getStringHash(String data)
         {
-            SHA1 sha1 = new SHA1CryptoServiceProvider();
+            SHA1 m_sha1 = new SHA1CryptoServiceProvider();
             byte[] dat = Encoding.ASCII.GetBytes(data);
-            sha1.ComputeHash(dat);
-            var hash = sha1.Hash;
+            m_sha1.ComputeHash(dat);
+            var hash = m_sha1.Hash;
             return hash;
         }
 
         private static String getHashAsString(String data)
         {
             var hash = getStringHash(data);
+            if (Encode64Bit)
+                return System.Convert.ToBase64String(m_hash);
+
             var sb = new StringBuilder(hash.Length * 2);
 
             foreach (byte b in hash)
             {
                 // can be "x2" if you want lowercase
-                sb.Append(b.ToString("X2"));
-            }
-            return sb.ToString();
-        }
-
-        private static String getHashAsString()
-        {
-            var sb = new StringBuilder(m_hash.Length * 2);
-
-            int count = 0;
-            foreach (byte b in m_hash)
-            {
-                // can be "x2" if you want lowercase
-                sb.Append(b.ToString("X2"));
-                if (Expand && ++count % 4 == 0)
-                    sb.Append(" ");
+                sb.Append(b.ToString("x2"));
             }
             return sb.ToString();
         }
@@ -423,10 +546,57 @@ namespace SimpleVerify
 
     public class CFileEntry
     {
+        private String m_hash = "";
+        private String m_pathHash = "";
+        private byte[] m_digest;
+        private byte[] m_pathDigest;
+
         public String Filename = "";
         public String Path = "";
-        public String Hash = "";
-        public String PathHash = "";
+        public bool Encode64Bit = false;
+        public bool Expand = false;
+
+        public byte[] Digest
+        {
+            get { return m_digest; }
+            set
+            {
+                m_digest = value;
+                m_hash = getHashAsString(m_digest);
+            }
+        }
+
+        public byte[] PathDigest
+        {
+            get { return m_pathDigest; }
+            set
+            {
+                m_pathDigest = value;
+                m_pathHash = getHashAsString(m_pathDigest);
+            }
+        }
+
+        public string Hash { get => m_hash; private set { } }
+
+        public string PathHash { get => m_pathHash; private set { } }
+
+        private String getHashAsString(byte[] m_hash)
+        {
+            if (Encode64Bit)
+                return System.Convert.ToBase64String(m_hash);
+
+            var sb = new StringBuilder(m_hash.Length * 2);
+
+            int count = 0;
+            foreach (byte b in m_hash)
+            {
+                // can be "x2" if you want lowercase
+                sb.Append(b.ToString("x2"));
+                if (Expand && ++count % 4 == 0)
+                    sb.Append(" ");
+            }
+            return sb.ToString();
+        }
     }
 
     public class CFileSortFilename : IComparer<CFileEntry>

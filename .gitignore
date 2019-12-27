@@ -2,3 +2,4 @@
 SimpleVerify/bin/
 SimpleVerify/obj/
 *.nupkg
+/.vs/SimpleVerify/v16/Server/sqlite3
